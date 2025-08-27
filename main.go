@@ -6,6 +6,8 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"sort"
+	"strconv"
 	"time"
 )
 
@@ -408,4 +410,251 @@ func (pm *PlatformManager) SearchAllPlatforms(req SearchRequest) ([]Route, error
 	}
 
 	return allRoutes, nil
+}
+
+var platformManager *PlatformManager
+
+// CORS middleware to handle cross-origin requests
+func enableCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+}
+
+// searchHandler handles bus search requests
+func searchHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != "POST" {
+		sendJSON(w, http.StatusMethodNotAllowed, Response{
+			Status:  "error",
+			Message: "Only POST method is allowed",
+		})
+		return
+	}
+
+	// Parse request body
+	var searchReq SearchRequest
+	if err := json.NewDecoder(r.Body).Decode(&searchReq); err != nil {
+		sendJSON(w, http.StatusBadRequest, Response{
+			Status:  "error",
+			Message: "Invalid JSON request body",
+		})
+		return
+	}
+
+	// Validate required fields
+	if searchReq.FromCity == "" || searchReq.ToCity == "" {
+		sendJSON(w, http.StatusBadRequest, Response{
+			Status:  "error",
+			Message: "from_city and to_city are required",
+		})
+		return
+	}
+
+	// Set default values
+	if searchReq.Passengers == 0 {
+		searchReq.Passengers = 1
+	}
+	if searchReq.Date.IsZero() {
+		searchReq.Date = time.Now().AddDate(0, 0, 1) // Tomorrow
+	}
+
+	start := time.Now()
+
+	// Search all platforms
+	routes, err := platformManager.SearchAllPlatforms(searchReq)
+	if err != nil {
+		sendJSON(w, http.StatusInternalServerError, Response{
+			Status:  "error",
+			Message: fmt.Sprintf("Search failed: %v", err),
+		})
+		return
+	}
+
+	// Sort routes by price (ascending)
+	sort.Slice(routes, func(i, j int) bool {
+		return routes[i].Price.Amount < routes[j].Price.Amount
+	})
+
+	searchTime := time.Since(start)
+	searchID := fmt.Sprintf("search_%d", time.Now().Unix())
+
+	response := SearchResponse{
+		Status:     "success",
+		Message:    "Routes found successfully",
+		SearchID:   searchID,
+		Routes:     routes,
+		TotalFound: len(routes),
+		SearchTime: fmt.Sprintf("%.2fs", searchTime.Seconds()),
+	}
+
+	sendJSON(w, http.StatusOK, response)
+}
+
+// routesHandler returns available routes (GET endpoint for testing)
+func routesHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+
+	// Get query parameters
+	fromCity := r.URL.Query().Get("from")
+	toCity := r.URL.Query().Get("to")
+	dateStr := r.URL.Query().Get("date")
+	passengersStr := r.URL.Query().Get("passengers")
+
+	if fromCity == "" || toCity == "" {
+		sendJSON(w, http.StatusBadRequest, Response{
+			Status:  "error",
+			Message: "from and to parameters are required",
+		})
+		return
+	}
+
+	// Parse date
+	var searchDate time.Time
+	if dateStr != "" {
+		var err error
+		searchDate, err = time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			sendJSON(w, http.StatusBadRequest, Response{
+				Status:  "error",
+				Message: "Invalid date format. Use YYYY-MM-DD",
+			})
+			return
+		}
+	} else {
+		searchDate = time.Now().AddDate(0, 0, 1) // Tomorrow
+	}
+
+	// Parse passengers
+	passengers := 1
+	if passengersStr != "" {
+		var err error
+		passengers, err = strconv.Atoi(passengersStr)
+		if err != nil || passengers < 1 {
+			passengers = 1
+		}
+	}
+
+	searchReq := SearchRequest{
+		FromCity:   fromCity,
+		ToCity:     toCity,
+		Date:       searchDate,
+		Passengers: passengers,
+	}
+
+	start := time.Now()
+	routes, err := platformManager.SearchAllPlatforms(searchReq)
+	if err != nil {
+		sendJSON(w, http.StatusInternalServerError, Response{
+			Status:  "error",
+			Message: fmt.Sprintf("Search failed: %v", err),
+		})
+		return
+	}
+
+	// Sort by price
+	sort.Slice(routes, func(i, j int) bool {
+		return routes[i].Price.Amount < routes[j].Price.Amount
+	})
+
+	searchTime := time.Since(start)
+
+	response := SearchResponse{
+		Status:     "success",
+		Message:    "Routes found successfully",
+		SearchID:   fmt.Sprintf("search_%d", time.Now().Unix()),
+		Routes:     routes,
+		TotalFound: len(routes),
+		SearchTime: fmt.Sprintf("%.2fs", searchTime.Seconds()),
+	}
+
+	sendJSON(w, http.StatusOK, response)
+}
+
+// citiesHandler returns available cities
+func citiesHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+
+	cities := []map[string]string{}
+	for _, loc := range GetSampleLocations() {
+		cities = append(cities, map[string]string{
+			"id":    loc.ID,
+			"name":  loc.City,
+			"state": loc.State,
+		})
+	}
+
+	sendJSON(w, http.StatusOK, Response{
+		Status:  "success",
+		Message: "Cities retrieved successfully",
+		Data:    cities,
+	})
+}
+
+// platformsHandler returns available booking platforms
+func platformsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+
+	platforms := []map[string]interface{}{
+		{"name": "RedBus", "active": true, "avg_response_time": "300ms"},
+		{"name": "MakeMyTrip", "active": true, "avg_response_time": "450ms"},
+		{"name": "Goibibo", "active": true, "avg_response_time": "325ms"},
+	}
+
+	sendJSON(w, http.StatusOK, Response{
+		Status:  "success",
+		Message: "Platforms retrieved successfully",
+		Data:    platforms,
+	})
+}
+
+func main() {
+	// Initialize random seed
+	rand.Seed(time.Now().UnixNano())
+
+	// Initialize platform manager
+	platformManager = NewPlatformManager()
+
+	// Create HTTP multiplexer
+	mux := http.NewServeMux()
+
+	// Register routes
+	mux.HandleFunc("/", homeHandler)
+	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/search", searchHandler)
+	mux.HandleFunc("/routes", routesHandler)
+	mux.HandleFunc("/cities", citiesHandler)
+	mux.HandleFunc("/platforms", platformsHandler)
+
+	// Server configuration
+	port := ":8080"
+
+	fmt.Printf("🚌 Bus Booking Aggregator API\n")
+	fmt.Printf("📍 Server: http://localhost%s\n", port)
+	fmt.Printf("📋 Endpoints:\n")
+	fmt.Printf("   GET  /              - API info\n")
+	fmt.Printf("   GET  /health        - Health check\n")
+	fmt.Printf("   GET  /cities        - Available cities\n")
+	fmt.Printf("   GET  /platforms     - Booking platforms\n")
+	fmt.Printf("   GET  /routes        - Search routes (query params)\n")
+	fmt.Printf("   POST /search        - Search routes (JSON body)\n")
+	fmt.Printf("\n🔍 Example GET request:\n")
+	fmt.Printf("   http://localhost%s/routes?from=Mumbai&to=Pune&date=2025-08-21&passengers=2\n", port)
+	fmt.Printf("\n📝 Example POST request body:\n")
+	fmt.Printf(`   {
+     "from_city": "Mumbai",
+     "to_city": "Pune", 
+     "date": "2025-08-21T00:00:00Z",
+     "passengers": 2
+   }`)
+	fmt.Printf("\n\n🚀 Starting server...\n")
+
+	// Start server
+	log.Fatal(http.ListenAndServe(port, mux))
 }
