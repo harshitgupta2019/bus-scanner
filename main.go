@@ -653,7 +653,7 @@ func main() {
      "date": "2025-08-21T00:00:00Z",
      "passengers": 2
    }`)
-	fmt.Printf("\n\n🚀 Starting server...\n")
+	fmt.Printf("\n🚀 Starting server...\n")
 
 	// Start server
 	log.Fatal(http.ListenAndServe(port, mux))
