@@ -173,23 +173,23 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, response)
 }
 
-func main() {
-	// Create a new HTTP multiplexer
-	mux := http.NewServeMux()
+// func main() {
+// 	// Create a new HTTP multiplexer
+// 	mux := http.NewServeMux()
 
-	// Register routes
-	mux.HandleFunc("/", homeHandler)
-	mux.HandleFunc("/health", healthHandler)
+// 	// Register routes
+// 	mux.HandleFunc("/", homeHandler)
+// 	mux.HandleFunc("/health", healthHandler)
 
-	// Server configuration
-	port := ":8080"
+// 	// Server configuration
+// 	port := ":8080"
 
-	fmt.Printf("🚌 Bus Booking Aggregator starting on port %s\n", port)
-	fmt.Printf("📍 http://localhost%s\n", port)
+// 	fmt.Printf("🚌 Bus Booking Aggregator starting on port %s\n", port)
+// 	fmt.Printf("📍 http://localhost%s\n", port)
 
-	// Start the server
-	log.Fatal(http.ListenAndServe(port, mux))
-}
+// 	// Start the server
+// 	log.Fatal(http.ListenAndServe(port, mux))
+// }
 
 type PlatformService interface {
 	SearchRoutes(req SearchRequest) ([]Route, error)
@@ -626,7 +626,7 @@ func main() {
 
 	// Register routes
 	mux.HandleFunc("/", homeHandler)
-	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/health-check", healthHandler)
 	mux.HandleFunc("/search", searchHandler)
 	mux.HandleFunc("/routes", routesHandler)
 	mux.HandleFunc("/cities", citiesHandler)
